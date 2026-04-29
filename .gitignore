@@ -1,0 +1,28 @@
+# Modelos entrenados (pesados, se regeneran)
+models/*.pth
+models/*.pt
+models/*.pkl
+
+# Datasets generados (se generan con vglc_parser.py)
+data/dataset_full.json
+
+# Resultados de experimentos (se regeneran)
+experiments/**/*.json
+experiments/**/*.png
+experiments/**/*.npy
+
+# Jupyter checkpoints
+notebooks/.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
