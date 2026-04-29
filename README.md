@@ -7,12 +7,20 @@
 
 ---
 
-## Descripción
+## Estado actual
 
-NeuralPlumber extiende el trabajo de Volz et al. (2018) para mejorar la **coherencia estructural** de los niveles de Mario generados por una DCGAN + CMA-ES. Las dos contribuciones principales son:
-
-1. **Dataset expandido**: de 1 a 15 niveles de entrenamiento (VGLC)
-2. **Fitness estructural**: nuevas métricas de coherencia integradas al CMA-ES
+| Componente | Estado |
+|---|---|
+| Estructura del proyecto | Listo |
+| Compatibilidad PyTorch 2.5 (`dcgan.py`) | Resuelto |
+| Carga de modelo preentrenado | Funcionando |
+| Generación de niveles | Funcionando |
+| Métricas estructurales | Funcionando |
+| Visualización | Funcionando |
+| Baseline estadístico (100 niveles) | Pendiente |
+| Dataset expandido (15 niveles) | Pendiente |
+| Re-entrenamiento GAN | Pendiente |
+| CMA-ES con F3 | Pendiente |
 
 ---
 
@@ -26,22 +34,24 @@ conda activate neuralplumber
 pip install -r requirements.txt
 ```
 
+**Versión probada:** Python 3.12 · PyTorch 2.5.1+cu121
+
 ### Java
 
 ```
 Java 8+
-Apache Ant (para compilar marioaiDagstuhl)
+Apache Ant (para compilar marioaiDagstuhl, solo necesario para Exp. C)
 ```
 
 ### Estructura de dependencias externas
 
-Este proyecto depende de dos recursos que deben estar en la carpeta padre (`../`):
+Este proyecto requiere dos recursos en la carpeta padre (`../`):
 
 ```
 ML/Proyecto/
-├── NeuralPlumber/          ← este repositorio
-├── clone/DagstuhlGAN/      ← repositorio base (Volz et al.)
-└── Datasets/TheVGLC/       ← Video Game Level Corpus
+├── NeuralPlumber/               ← este repositorio
+├── clone/DagstuhlGAN/           ← clonar desde https://github.com/CIGbalance/DagstuhlGAN
+└── Datasets/TheVGLC/            ← clonar desde https://github.com/TheVGLC/TheVGLC
 ```
 
 ---
@@ -49,80 +59,77 @@ ML/Proyecto/
 ## Instalación
 
 ```bash
-# 1. Clonar / ubicarse en el proyecto
-cd NeuralPlumber/
-
-# 2. Instalar dependencias Python
+# 1. Instalar dependencias Python
 pip install -r requirements.txt
 
-# 3. Compilar el framework Java de Mario (para evaluación con agente)
+# 2. Aplicar fix de compatibilidad PyTorch 2.x (ya incluido en el repo)
+#    El archivo clone/DagstuhlGAN/pytorch/models/dcgan.py ya fue parcheado.
+
+# 3. (Solo para Exp. C) Compilar el framework Java de Mario
 cd ../clone/DagstuhlGAN/marioaiDagstuhl/
 ant build
-cd ../../../NeuralPlumber/
-
-# 4. Configurar ruta de Python para el bridge Java↔Python
-echo "$(which python)" > ../clone/DagstuhlGAN/marioaiDagstuhl/src/basicMap/my_python_path.txt
+echo "$(which python)" > src/basicMap/my_python_path.txt
 ```
 
 ---
 
-## Uso rápido
+## Uso
 
-### 1. Reproducir baseline (Volz et al.)
-
-```bash
-python src/baseline/reproduce_volz.py
-# Output: métricas baseline en experiments/baseline/
-```
-
-### 2. Construir dataset expandido
+### Verificar que todo funciona
 
 ```bash
-python src/data/vglc_parser.py \
-  --input_dir ../Datasets/TheVGLC/Super\ Mario\ Bros/Processed/ \
-  --output data/dataset_full.json
-# Output: data/dataset_full.json (~2500 ventanas de 15 niveles)
+cd ..   # pararse en ML/Proyecto/
+python -c "
+import sys
+sys.path.insert(0, 'clone/DagstuhlGAN/pytorch')
+sys.path.insert(0, 'NeuralPlumber/src')
+import torch
+from models.dcgan import DCGAN_G, load_compatible
+from metrics.structural import structural_score
+gen = DCGAN_G(32, 32, 10, 64, 0, 0)
+load_compatible(gen, 'clone/DagstuhlGAN/pytorch/netG_epoch_5000.pth')
+gen.eval()
+with torch.no_grad():
+    out = gen(torch.randn(1, 32, 1, 1))
+level = out[0, :, :14, :28].argmax(0).numpy()
+print(structural_score(level))
+"
 ```
 
-### 3. Re-entrenar el GAN con más datos
+### Experimento A — Baseline (100 niveles, modelo original)
 
 ```bash
-cd ../clone/DagstuhlGAN/pytorch/
-python main.py \
-  --nz 32 --ngf 64 --ndf 64 \
-  --batchSize 32 --niter 5000 \
-  --lrD 0.00005 --lrG 0.00005 \
-  --json_path ../../../NeuralPlumber/data/dataset_full.json
-# Output: netG_epoch_5000.pth (modelo re-entrenado)
+cd ..
+python NeuralPlumber/src/baseline/reproduce_volz.py --n_samples 100
+# Output: NeuralPlumber/experiments/baseline/metrics_baseline.json
 ```
 
-### 4. Calcular métricas estructurales
-
-```python
-import numpy as np
-from src.metrics.structural import structural_score
-
-# level: array (14, 28) con IDs de tiles [0-9]
-level = np.load("experiments/baseline/level_sample.npy")
-metrics = structural_score(level)
-print(metrics)
-# {
-#   'pipe_completeness':  0.83,
-#   'ground_continuity':  0.91,
-#   'gap_traversability': 0.75,
-#   'enemy_placement':    1.00,
-#   'structural_avg':     0.87
-# }
-```
-
-### 5. Ejecutar CMA-ES con F3 (fitness combinado)
+### Construir dataset expandido
 
 ```bash
+python NeuralPlumber/src/data/vglc_parser.py \
+  --input_dir "Datasets/TheVGLC/Super Mario Bros/Processed/" \
+  --output NeuralPlumber/data/dataset_full.json
+# Output: ~2500 ventanas de 15 niveles de Mario
+```
+
+### Re-entrenar el GAN (Experimento B)
+
+```bash
+cd clone/DagstuhlGAN/pytorch/
+cp example.json example_original.json
+cp ../../../NeuralPlumber/data/dataset_full.json example.json
+python main.py --nz 32 --ngf 64 --ndf 64 --batchSize 32 --niter 5000
+# Output: netG_epoch_5000.pth (modelo re-entrenado con 15 niveles)
+```
+
+### CMA-ES con F3 (Experimento C)
+
+```bash
+cd ../../../NeuralPlumber/
 python src/evolution/cmaes_runner.py \
-  --model models/netG_15levels.pth \
-  --fitness f3 \
-  --runs 40 \
-  --evals 1000 \
+  --model ../clone/DagstuhlGAN/pytorch/netG_epoch_5000.pth \
+  --fitness f3 --runs 40 --evals 1000 \
   --output experiments/structural_fitness/
 ```
 
@@ -132,41 +139,36 @@ python src/evolution/cmaes_runner.py \
 
 ```
 NeuralPlumber/
-├── README.md                       # Este archivo
-├── proyecto_inf398.md              # Documentación completa del proyecto
-├── requirements.txt                # Dependencias Python
+├── README.md
+├── TODO.md                        ← tareas pendientes
+├── proyecto_inf398.md             ← documentación completa del proyecto
+├── requirements.txt
+├── .gitignore
+├── .gitattributes
 │
 ├── src/
 │   ├── data/
-│   │   ├── vglc_parser.py          # Lee .txt del VGLC → JSON
-│   │   └── dataset_builder.py      # Construye dataset_full.json
+│   │   └── vglc_parser.py         ← lee .txt del VGLC → dataset_full.json
 │   ├── metrics/
-│   │   ├── structural.py           # pipe_completeness, ground_continuity, etc.
-│   │   ├── playability.py          # Wrapper del agente A*
-│   │   └── diversity.py            # Diversidad entre niveles generados
+│   │   ├── structural.py          ← pipe_completeness, ground_continuity, etc.
+│   │   └── diversity.py           ← diversidad entre niveles generados
 │   ├── fitness/
-│   │   ├── f1_f2.py                # Fitness del paper base
-│   │   └── f3_combined.py          # F3: jugabilidad + estructura + dificultad
+│   │   └── f3_combined.py         ← F3 + F1/F2 originales
 │   ├── evolution/
-│   │   └── cmaes_runner.py         # CMA-ES con fitness configurable
-│   ├── visualization/
-│   │   ├── level_renderer.py       # Renderiza nivel como imagen
-│   │   └── metrics_plotter.py      # Gráficas comparativas
-│   └── baseline/
-│       └── reproduce_volz.py       # Reproduce experimentos Volz et al.
+│   │   └── cmaes_runner.py        ← CMA-ES con fitness configurable (pendiente)
+│   ├── baseline/
+│   │   └── reproduce_volz.py      ← genera 100 niveles, reporta métricas baseline
+│   └── visualization/
+│       ├── level_renderer.py      ← renderiza nivel con colores por tile
+│       └── metrics_plotter.py     ← gráficas comparativas A vs B vs C
 │
-├── models/
-│   └── netG_15levels.pth           # GAN re-entrenado (generado)
-│
+├── models/                        ← .pth van aquí (ignorados por git)
 ├── data/
-│   ├── example.json                # Dataset original (173 ventanas, 1 nivel)
-│   └── dataset_full.json           # Dataset expandido (~2500 ventanas, 15 niveles)
-│
+│   └── dataset_full.json          ← generado con vglc_parser.py (ignorado por git)
 ├── experiments/
-│   ├── baseline/                   # Resultados Experimento A
-│   ├── expanded_data/              # Resultados Experimento B
-│   └── structural_fitness/         # Resultados Experimento C
-│
+│   ├── baseline/
+│   ├── expanded_data/
+│   └── structural_fitness/
 └── notebooks/
     ├── 01_baseline_analysis.ipynb
     ├── 02_dataset_expansion.ipynb
@@ -176,9 +178,21 @@ NeuralPlumber/
 
 ---
 
-## Experimentos
+## Fix de compatibilidad PyTorch 2.x
 
-Se comparan 3 configuraciones:
+El archivo `clone/DagstuhlGAN/pytorch/models/dcgan.py` fue modificado para compatibilidad con PyTorch 2.x:
+
+- **Puntos en nombres de módulos** → guiones bajos (`initial.32-256.convt` → `initial_32-256_convt`)
+- **`load_compatible()`** → remapea automáticamente las claves del `.pth` guardado con la versión antigua
+- **`input.is_cuda`** → reemplaza `isinstance(input.data, torch.cuda.FloatTensor)`
+- **`nn.Softmax(dim=1)`** → fix del warning de dimensión implícita
+- **`weights_only=False`** → silencia el FutureWarning de `torch.load`
+
+Usar `load_compatible()` en lugar de `load_state_dict(torch.load(...))` directamente.
+
+---
+
+## Experimentos
 
 | Experimento | Modelo | Fitness | Objetivo |
 |---|---|---|---|
@@ -188,17 +202,17 @@ Se comparan 3 configuraciones:
 
 ---
 
-## Métricas
+## Métricas estructurales
 
-| Métrica | Módulo | Descripción |
-|---|---|---|
-| Tasa de jugabilidad | `playability.py` | % de niveles completados por A* |
-| Completitud de tuberías | `structural.py` | % de tuberías estructuralmente válidas |
-| Continuidad de suelo | `structural.py` | % de tiles sólidos en fila inferior |
-| Traversabilidad | `structural.py` | % de huecos ≤ 4 tiles de ancho |
-| Placement de enemigos | `structural.py` | % de enemigos sobre superficie sólida |
-| Score estructural | `structural.py` | Promedio de las 4 anteriores |
-| Diversidad | `diversity.py` | Distancia L1 promedio entre niveles |
+| Métrica | Rango | Mejor | Descripción |
+|---|---|---|---|
+| `pipe_completeness` | [0,1] | Alto | % de tuberías estructuralmente válidas |
+| `ground_continuity` | [0,1] | Alto | % de tiles sólidos en fila inferior |
+| `gap_traversability` | [0,1] | Alto | % de huecos ≤ 4 tiles de ancho |
+| `enemy_placement` | [0,1] | Alto | % de enemigos sobre superficie sólida |
+| `structural_avg` | [0,1] | Alto | Promedio de las 4 anteriores |
+
+**Resultado baseline medido (1 sample):** `structural_avg = 0.506`
 
 ---
 
