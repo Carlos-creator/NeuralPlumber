@@ -17,7 +17,7 @@ DAGSTUHL_PYTORCH = Path(__file__).resolve().parents[3] / "clone" / "DagstuhlGAN"
 sys.path.insert(0, str(DAGSTUHL_PYTORCH))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from models.dcgan import DCGAN_G
+from models.dcgan import DCGAN_G, load_compatible
 from metrics.structural import structural_score
 
 MODEL_PATH = DAGSTUHL_PYTORCH / "netG_epoch_5000.pth"
@@ -26,7 +26,7 @@ OUTPUT_DIR = Path(__file__).resolve().parents[2] / "experiments" / "baseline"
 
 def load_generator(model_path: Path, nz: int = 32, nc: int = 10, ngf: int = 64) -> DCGAN_G:
     gen = DCGAN_G(32, nz, nc, ngf, 0, 0)
-    gen.load_state_dict(torch.load(str(model_path), map_location="cpu"))
+    load_compatible(gen, str(model_path))
     gen.eval()
     return gen
 
@@ -53,31 +53,28 @@ def compute_metrics(levels: list) -> dict:
     return {k: float(np.mean([m[k] for m in all_m])) for k in keys}
 
 
-def main(n_samples: int = 100):
-    print(f"Cargando modelo desde: {MODEL_PATH}")
-    if not MODEL_PATH.exists():
-        print(f"ERROR: No se encontró {MODEL_PATH}")
-        print("Asegúrate de que el repositorio DagstuhlGAN esté en ../clone/DagstuhlGAN/")
+def main(n_samples: int = 100, model_path: Path = MODEL_PATH, output_dir: Path = OUTPUT_DIR):
+    print(f"Cargando modelo desde: {model_path}")
+    if not model_path.exists():
+        print(f"ERROR: No se encontró {model_path}")
         return
 
-    gen = load_generator(MODEL_PATH)
+    gen = load_generator(model_path)
     print(f"Generando {n_samples} niveles...")
     levels = sample_levels(gen, n=n_samples)
 
-    print("\n=== Métricas estructurales baseline (Volz et al., n={}) ===".format(n_samples))
+    print("\n=== Métricas estructurales (n={}) ===".format(n_samples))
     metrics = compute_metrics(levels)
     for k, v in metrics.items():
         print(f"  {k:25s}: {v:.4f}")
 
-    # Guardar resultados
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_file = OUTPUT_DIR / "metrics_baseline.json"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_file = output_dir / "metrics_baseline.json"
     with open(out_file, "w") as f:
-        json.dump({"n_samples": n_samples, "metrics": metrics}, f, indent=2)
+        json.dump({"n_samples": n_samples, "model": str(model_path), "metrics": metrics}, f, indent=2)
     print(f"\nResultados guardados en: {out_file}")
 
-    # Guardar algunos niveles de ejemplo
-    sample_file = OUTPUT_DIR / "sample_levels.json"
+    sample_file = output_dir / "sample_levels.json"
     with open(sample_file, "w") as f:
         json.dump([l.tolist() for l in levels[:10]], f)
     print(f"10 niveles de ejemplo guardados en: {sample_file}")
@@ -86,6 +83,8 @@ def main(n_samples: int = 100):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_samples", type=int, default=100)
+    parser.add_argument("--n_samples",   type=int, default=100)
+    parser.add_argument("--model_path",  default=str(MODEL_PATH))
+    parser.add_argument("--output_dir",  default=str(OUTPUT_DIR))
     args = parser.parse_args()
-    main(args.n_samples)
+    main(args.n_samples, Path(args.model_path), Path(args.output_dir))

@@ -61,7 +61,7 @@ def build_dataset(input_dir: str, output_path: str, width: int = 28, step: int =
         level = parse_level_file(f)
         windows = sliding_windows(level, width, step)
         all_windows.extend(windows)
-        print(f"  {f.name}: {level.shape[1]:4d} cols → {len(windows):4d} ventanas")
+        print(f"  {f.name}: {level.shape[1]:4d} cols -> {len(windows):4d} ventanas")
 
     print(f"\nTotal ventanas: {len(all_windows)}")
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)

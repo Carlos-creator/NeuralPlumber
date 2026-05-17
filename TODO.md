@@ -1,7 +1,7 @@
 # TODO — NeuralPlumber
 
-> Última actualización: 2026-04-28
-> Estado general: Pipeline funcionando, baseline pendiente de medición estadística.
+> Última actualización: 2026-05-17
+> Estado general: Experimentos A, B y C completados. Pendiente notebooks y entrega final.
 
 ---
 
@@ -9,9 +9,9 @@
 
 ```
 [x] Bloque 0 — Setup y compatibilidad
-[ ] Bloque 1 — Experimento A (Baseline)
-[ ] Bloque 2 — Experimento B (Dataset expandido)
-[ ] Bloque 3 — Experimento C (Fitness estructural)
+[x] Bloque 1 — Experimento A (Baseline)
+[x] Bloque 2 — Experimento B (Dataset expandido)
+[x] Bloque 3 — Experimento C (Fitness estructural)
 [ ] Bloque 4 — Evaluación comparativa y entrega
 ```
 
@@ -28,157 +28,111 @@
 - [x] Escribir `src/visualization/level_renderer.py`
 - [x] Escribir `src/visualization/metrics_plotter.py`
 - [x] Fix compatibilidad PyTorch 2.5 en `clone/DagstuhlGAN/pytorch/models/dcgan.py`
-  - [x] Puntos → guiones bajos en nombres de módulos
-  - [x] `load_compatible()` para remapear claves del `.pth` antiguo
-  - [x] `input.is_cuda` en lugar de `isinstance(...)`
-  - [x] `nn.Softmax(dim=1)` y `weights_only=False`
-- [x] Verificar pipeline completo (modelo carga, genera nivel, métricas calculan, visualización OK)
-- [x] Primer sample medido: `structural_avg = 0.506`
+- [x] Verificar pipeline completo (`structural_avg = 0.506` en 1 sample)
 - [x] Inicializar repositorio git
 - [x] `requirements.txt`, `.gitignore`, `.gitattributes`
+- [x] `run_experiments.bat` — script para reproducir todo el pipeline en Windows
 
 ---
 
-## Bloque 1 — Experimento A: Baseline
+## Bloque 1 — Experimento A: Baseline ✅ Completo
 
-> **Responsable:** ---
-> **Objetivo:** Medir métricas estructurales del modelo original de Volz et al. sobre 100 niveles.
+- [x] Agregar `--model_path` y `--output_dir` a `reproduce_volz.py`
+- [x] Ejecutar baseline estadístico (n=100)
+- [x] Verificar generación de `experiments/baseline/metrics_baseline.json`
+- [x] Guardar 10 niveles de ejemplo en `experiments/baseline/sample_levels.json`
+- [x] Visualizar 6 niveles → `experiments/baseline/sample_levels.png`
 
-- [ ] Ejecutar baseline estadístico:
-  ```bash
-  cd ..   # pararse en ML/Proyecto/
-  python NeuralPlumber/src/baseline/reproduce_volz.py --n_samples 100
-  ```
-- [ ] Verificar que se genera `experiments/baseline/metrics_baseline.json`
-- [ ] Anotar los valores en la tabla de resultados (ver abajo)
-- [ ] Guardar 10 niveles de ejemplo en `experiments/baseline/sample_levels.json`
-- [ ] Crear notebook `notebooks/01_baseline_analysis.ipynb` con visualización de los 10 niveles
+**Resultados:**
 
----
-
-## Bloque 2 — Experimento B: Dataset expandido
-
-> **Responsable:** ---
-> **Objetivo:** Re-entrenar el GAN con los 15 niveles del VGLC y medir si mejora la coherencia.
-
-- [ ] Construir dataset expandido:
-  ```bash
-  python NeuralPlumber/src/data/vglc_parser.py \
-    --input_dir "Datasets/TheVGLC/Super Mario Bros/Processed/" \
-    --output NeuralPlumber/data/dataset_full.json
-  ```
-- [ ] Verificar cantidad de ventanas generadas (esperado: ~2400-2600)
-- [ ] Comparar tamaño con dataset original:
-  ```bash
-  python -c "
-  import json
-  orig = json.load(open('clone/DagstuhlGAN/pytorch/example.json'))
-  full = json.load(open('NeuralPlumber/data/dataset_full.json'))
-  print(f'Original:  {len(orig)} ventanas')
-  print(f'Expandido: {len(full)} ventanas')
-  "
-  ```
-- [ ] Re-entrenar el GAN:
-  ```bash
-  cd clone/DagstuhlGAN/pytorch/
-  cp example.json example_original.json
-  cp ../../../NeuralPlumber/data/dataset_full.json example.json
-  python main.py --nz 32 --ngf 64 --ndf 64 --batchSize 32 --niter 5000
-  ```
-- [ ] Guardar modelo como `NeuralPlumber/models/netG_15levels.pth`
-- [ ] Ejecutar métricas sobre 100 niveles del modelo re-entrenado:
-  ```bash
-  python NeuralPlumber/src/baseline/reproduce_volz.py \
-    --model_path NeuralPlumber/models/netG_15levels.pth \
-    --n_samples 100 \
-    --output_dir NeuralPlumber/experiments/expanded_data/
-  ```
-- [ ] Anotar resultados en tabla comparativa
-- [ ] Crear notebook `notebooks/02_dataset_expansion.ipynb`
-
-> **Nota:** El re-entrenamiento puede tardar 30-60 min. Dejarlo correr y avanzar con Bloque 3 en paralelo.
+| Métrica | Valor |
+|---|---|
+| `pipe_completeness` | 0.2075 |
+| `ground_continuity` | 0.5093 |
+| `gap_traversability` | 0.9100 |
+| `enemy_placement` | 0.9667 |
+| `structural_avg` | **0.6484** |
 
 ---
 
-## Bloque 3 — Experimento C: Fitness estructural (F3)
+## Bloque 2 — Experimento B: Dataset expandido ✅ Completo
 
-> **Responsable:** ---
-> **Objetivo:** Integrar F3 en el CMA-ES y verificar que genera niveles más coherentes.
+- [x] Construir dataset expandido con `vglc_parser.py`
+  - 15 niveles → 2518 ventanas (vs 173 originales, 14.6x más datos)
+- [x] Comparar tamaño con dataset original
+- [x] Re-entrenar GAN (5000 épocas, ~50 min CPU)
+- [x] Guardar modelo como `NeuralPlumber/models/netG_15levels.pth`
+- [x] Ejecutar métricas sobre 100 niveles del modelo re-entrenado
+- [x] Guardar curvas de entrenamiento → `experiments/expanded_data/training_progress.png`
 
-- [ ] Implementar `src/evolution/cmaes_runner.py`:
-  - [ ] Wrapper Python del CMA-ES que use `load_compatible()` para el generador
-  - [ ] Soporte para `--fitness f1`, `--fitness f2`, `--fitness f3`
-  - [ ] Guardar mejores vectores latentes y niveles generados
-  - [ ] Log de fitness por iteración (formato compatible con `cmaes_java_experiment/timeline*.txt`)
-- [ ] Verificar que `f3_static` funciona sin necesidad del agente Java:
-  ```bash
-  python -c "
-  import sys; sys.path.insert(0, 'NeuralPlumber/src')
-  import numpy as np
-  from fitness.f3_combined import f3_static
-  level = np.zeros((14, 28), dtype=int)
-  level[-1, :] = 0   # suelo completo
-  print('F3 static (nivel perfecto):', f3_static(level))
-  "
-  ```
-- [ ] Ejecutar CMA-ES con F3 estático (sin Java) — primero para validar:
-  ```bash
-  python NeuralPlumber/src/evolution/cmaes_runner.py \
-    --fitness f3_static --runs 20 --evals 500
-  ```
-- [ ] (Opcional/avanzado) Conectar con agente Java para F3 completo
-- [ ] Guardar resultados en `experiments/structural_fitness/`
-- [ ] Crear notebook `notebooks/03_structural_metrics.ipynb`
+**Resultados:**
+
+| Métrica | Valor |
+|---|---|
+| `pipe_completeness` | 0.1707 |
+| `ground_continuity` | 0.5211 |
+| `gap_traversability` | 0.9175 |
+| `enemy_placement` | 0.9600 |
+| `structural_avg` | **0.6423** |
+
+> Observación: más datos solos no mejoran el baseline. El cuello de botella es el muestreo aleatorio, no el dataset.
+
+---
+
+## Bloque 3 — Experimento C: Fitness estructural (F3) ✅ Completo
+
+- [x] Implementar `src/evolution/cmaes_runner.py`
+  - [x] Soporte para `--fitness f3_static` y `--fitness structural_avg`
+  - [x] Log de fitness por generación
+  - [x] Guardar mejores niveles y resultados JSON
+- [x] Corregir bug de doble negación en `make_fitness_fn`
+- [x] Ejecutar CMA-ES con F3 estático (40 runs, 1000 evals)
+- [x] Guardar resultados en `experiments/structural_fitness/`
+- [x] Graficar evolución del fitness → `experiments/structural_fitness/cmaes_evolution.png`
+- [x] Visualizar mejores niveles → `experiments/structural_fitness/sample_levels_cmaes.png`
+- [x] Gráfica comparativa A vs B vs C → `experiments/comparison_metrics.png`
+
+**Resultados:**
+
+| Métrica | Valor |
+|---|---|
+| `pipe_completeness` | 0.4567 (+120% vs A) |
+| `ground_continuity` | 0.8326 (+63% vs A) |
+| `gap_traversability` | 1.0000 |
+| `enemy_placement` | 1.0000 |
+| `structural_avg` | **0.8223** (+27% vs A) |
 
 ---
 
 ## Bloque 4 — Evaluación comparativa y entrega
 
 > **Responsable:** Todos
-> **Objetivo:** Comparar A vs B vs C, generar figuras y escribir conclusiones.
+> **Objetivo:** Completar notebooks y escribir conclusiones para la entrega final.
 
-- [ ] Ejecutar `src/visualization/metrics_plotter.py` con los 3 experimentos:
-  ```bash
-  python NeuralPlumber/src/visualization/metrics_plotter.py \
-    --experiments_dir NeuralPlumber/experiments/ \
-    --save_dir NeuralPlumber/experiments/
-  ```
-- [ ] Completar notebook `notebooks/04_results_comparison.ipynb` con:
-  - [ ] Tabla comparativa A vs B vs C
-  - [ ] Gráfica de barras de métricas estructurales
-  - [ ] Grid visual de niveles representativos de cada experimento
-  - [ ] Discusión de resultados
+- [ ] Completar notebook `notebooks/01_baseline_analysis.ipynb`
+- [ ] Completar notebook `notebooks/02_dataset_expansion.ipynb`
+- [ ] Completar notebook `notebooks/03_structural_metrics.ipynb`
+- [ ] Completar notebook `notebooks/04_results_comparison.ipynb`
 - [ ] Hacer commit y push final a GitHub
-- [ ] Revisar que el README refleja los resultados finales
 
 ---
 
-## Tabla de resultados (completar a medida que se obtienen)
+## Tabla de resultados completa
 
-| Métrica | Exp A (baseline) | Exp B (15 niveles) | Exp C (F3) |
+| Métrica | Exp A (baseline) | Exp B (15 niveles) | Exp C (CMA-ES+F3) |
 |---|---|---|---|
-| `pipe_completeness` | — | — | — |
-| `ground_continuity` | — | — | — |
-| `gap_traversability` | — | — | — |
-| `enemy_placement` | — | — | — |
-| `structural_avg` | — | — | — |
-| Tasa jugabilidad | — | — | — |
-
-> Sample único medido: `structural_avg = 0.506` (no estadístico, n=1)
-
----
-
-## Fixes pendientes menores
-
-- [ ] Agregar argumento `--model_path` a `reproduce_volz.py` para poder apuntar a distintos modelos (actualmente hardcodeado)
-- [ ] Verificar que `vglc_parser.py` maneja niveles con longitudes distintas (algunos niveles del VGLC pueden tener más de 14 filas)
-- [ ] Revisar `main.py` del DagstuhlGAN para compatibilidad con PyTorch 2.5 antes del re-entrenamiento (puede tener más usos de `Variable()`)
+| `pipe_completeness` | 0.2075 | 0.1707 | **0.4567** |
+| `ground_continuity` | 0.5093 | 0.5211 | **0.8326** |
+| `gap_traversability` | 0.9100 | 0.9175 | **1.0000** |
+| `enemy_placement` | 0.9667 | 0.9600 | **1.0000** |
+| `structural_avg` | 0.6484 | 0.6423 | **0.8223** |
 
 ---
 
 ## Notas
 
 - El modelo preentrenado `netG_epoch_5000.pth` está en `clone/DagstuhlGAN/pytorch/` — no se sube al repo
-- Los `.pth` nuevos van en `NeuralPlumber/models/` — tampoco se suben (ver `.gitignore`)
+- El modelo re-entrenado `netG_15levels.pth` está en `NeuralPlumber/models/` — tampoco se sube
 - `data/dataset_full.json` tampoco se sube — se regenera con `vglc_parser.py`
+- Los resultados de experimentos (`.json`, `.png`) tampoco se suben — se regeneran corriendo los scripts
 - Para compartir modelos entre integrantes: Google Drive o similar
